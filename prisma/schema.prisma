@@ -1,0 +1,80 @@
+generator client {
+    provider = "prisma-client-js"
+    binaryTargets = ["native"]
+    output = "../node_modules/.prisma/client"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+model Bairro {
+  id        Int      @id @default(autoincrement())
+  nome      String   @unique
+  cidade    String   @default("Salvador")
+  regiao    String
+  alunos    Aluno[]
+}
+
+model Instrutor {
+  id          Int      @id @default(autoincrement())
+  nome        String
+  apelido     String
+  graduacao   String
+  anosExp     Int      @map("anos_exp")
+  turmas      Turma[]
+}
+
+model Turma {
+  id           Int       @id @default(autoincrement())
+  nome         String
+  nivel        String    // iniciante, intermediario, avancado, infantil
+  diaSemana    String    @map("dia_semana")
+  horario      String
+  instrutorId  Int       @map("instrutor_id")
+  instrutor    Instrutor @relation(fields: [instrutorId], references: [id])
+  alunos       Aluno[]
+  frequencias  Frequencia[]
+}
+
+model Aluno {
+  id             Int       @id @default(autoincrement())
+  nome           String
+  apelido        String?
+  genero         String    // masculino, feminino, outro
+  dataNascimento DateTime  @map("data_nascimento")
+  idade          Int
+  escolaridade   String    // fundamental, medio, superior_incompleto, superior, pos
+  rendaFamiliar  Float     @map("renda_familiar")
+  bairroId       Int       @map("bairro_id")
+  bairro         Bairro    @relation(fields: [bairroId], references: [id])
+  turmaId        Int       @map("turma_id")
+  turma          Turma     @relation(fields: [turmaId], references: [id])
+  graduacao      String    // corda: crua, amarela, laranja, azul, verde, roxa, marrom, preta
+  dataIngresso   DateTime  @map("data_ingresso")
+  status         String    @default("ativo") // ativo, inativo, trancado
+  bolsista       Boolean   @default(false)
+  frequencias    Frequencia[]
+  mensalidades   Mensalidade[]
+}
+
+model Frequencia {
+  id       Int      @id @default(autoincrement())
+  alunoId  Int      @map("aluno_id")
+  turmaId  Int      @map("turma_id")
+  data     DateTime
+  presente Boolean
+  aluno    Aluno    @relation(fields: [alunoId], references: [id])
+  turma    Turma    @relation(fields: [turmaId], references: [id])
+}
+
+model Mensalidade {
+  id            Int      @id @default(autoincrement())
+  alunoId       Int      @map("aluno_id")
+  mesReferencia String   @map("mes_referencia") // YYYY-MM
+  valor         Float
+  pago          Boolean  @default(false)
+  dataPagamento DateTime? @map("data_pagamento")
+  aluno         Aluno    @relation(fields: [alunoId], references: [id])
+}
