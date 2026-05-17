@@ -27,19 +27,32 @@ export function ChatNL() {
     const firstRow = result.rows[0]
     const keys = Object.keys(firstRow)
     if (keys.length < 2) return []
-    const labelKey = keys.find((k: string) => typeof firstRow[k] === 'string')
-    const valueKey = keys.find((k: string) => typeof firstRow[k] === 'number')
+
+    const labelKey = keys.find((k: string) => typeof firstRow[k] === 'string') ?? keys[0]
+    const valueKey = keys.find((k: string) => {
+      if (k === labelKey) return false
+      const v = firstRow[k]
+      return typeof v === 'number' || (typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Number(v)))
+    })
+
     if (!labelKey || !valueKey) return []
+
     return result.rows
-      .filter((row: any) => typeof row?.[labelKey] === 'string' && typeof row?.[valueKey] === 'number')
+      .map((row: any) => ({
+        name: String(row?.[labelKey] ?? ''),
+        value: Number(row?.[valueKey]),
+      }))
+      .filter((row: any) => row.name !== '' && Number.isFinite(row.value))
       .slice(0, 20)
-      .map((row: any) => ({ name: row[labelKey], value: row[valueKey] }))
   }, [result])
 
   async function exportarGrafico() {
     if (!chartContainerRef.current || chartData.length === 0) return
     const svg = chartContainerRef.current.querySelector('svg')
-    if (!svg) return
+    if (!svg) {
+      setErro('Não foi possível exportar o gráfico desta consulta.')
+      return
+    }
     const svgData = new XMLSerializer().serializeToString(svg)
     const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
     const url = URL.createObjectURL(svgBlob)
@@ -110,10 +123,10 @@ export function ChatNL() {
                   <h4 className="text-xs font-semibold text-muted-foreground uppercase">Resultado ({result.total} linha{result.total === 1 ? '' : 's'})</h4>
                   <button
                     onClick={exportarGrafico}
-                    disabled={chartData.length === 0}
+                    disabled={chartData.length === 0 || loading}
                     className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-medium flex items-center gap-2 disabled:opacity-50 hover:bg-primary/90 transition"
                   >
-                    <Download className="w-3 h-3" /> Exportar gráfico
+                    <Download className="w-3 h-3" /> {chartData.length === 0 ? 'Sem gráfico para exportar' : 'Exportar gráfico'}
                   </button>
                 </div>
 
