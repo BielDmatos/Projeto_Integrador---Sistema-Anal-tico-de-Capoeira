@@ -1,7 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   distDir: process.env.NEXT_DIST_DIR || '.next',
-  output: process.env.NEXT_OUTPUT_MODE,
+  // Use standalone output to avoid output-file-tracing issues on some builders
+  output: process.env.NEXT_OUTPUT_MODE || 'standalone',
   productionBrowserSourceMaps: false,
   eslint: {
     ignoreDuringBuilds: true,
