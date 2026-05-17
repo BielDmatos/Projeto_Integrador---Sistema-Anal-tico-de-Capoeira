@@ -1,7 +1,8 @@
 'use client'
-import { useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Send, Loader2, Database, Sparkles, AlertTriangle } from 'lucide-react'
+import { Send, Loader2, Sparkles, AlertTriangle, Download } from 'lucide-react'
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts'
 
 const SUGESTOES = [
   'Quantos alunos estão ativos?',
@@ -17,14 +18,44 @@ const SUGESTOES = [
 export function ChatNL() {
   const [pergunta, setPergunta] = useState('')
   const [loading, setLoading] = useState(false)
-  const [status, setStatus] = useState('')
   const [result, setResult] = useState<any>(null)
   const [erro, setErro] = useState('')
+  const chartContainerRef = useRef<HTMLDivElement | null>(null)
+
+  const chartData = useMemo(() => {
+    if (!result?.rows || !Array.isArray(result.rows) || result.rows.length === 0) return []
+    const firstRow = result.rows[0]
+    const keys = Object.keys(firstRow)
+    if (keys.length < 2) return []
+    const labelKey = keys.find((k: string) => typeof firstRow[k] === 'string')
+    const valueKey = keys.find((k: string) => typeof firstRow[k] === 'number')
+    if (!labelKey || !valueKey) return []
+    return result.rows
+      .filter((row: any) => typeof row?.[labelKey] === 'string' && typeof row?.[valueKey] === 'number')
+      .slice(0, 20)
+      .map((row: any) => ({ name: row[labelKey], value: row[valueKey] }))
+  }, [result])
+
+  async function exportarGrafico() {
+    if (!chartContainerRef.current || chartData.length === 0) return
+    const svg = chartContainerRef.current.querySelector('svg')
+    if (!svg) return
+    const svgData = new XMLSerializer().serializeToString(svg)
+    const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
+    const url = URL.createObjectURL(svgBlob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'grafico-analista.svg'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
 
   async function enviar(p?: string) {
     const q = (p ?? pergunta).trim()
     if (!q) return
-    setPergunta(q); setLoading(true); setStatus('Iniciando...'); setResult(null); setErro('')
+    setPergunta(q); setLoading(true); setResult(null); setErro('')
     try {
       const r = await fetch('/api/query', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pergunta: q }) })
       const reader = r.body!.getReader()
@@ -40,9 +71,8 @@ export function ChatNL() {
           if (!line.startsWith('data: ')) continue
           try {
             const obj = JSON.parse(line.slice(6))
-            if (obj.status === 'processing') setStatus(obj.message ?? 'Processando...')
-            else if (obj.status === 'completed') { setResult(obj.result); setStatus('') }
-            else if (obj.status === 'error') { setErro(obj.message ?? 'Erro'); setStatus('') }
+            if (obj.status === 'completed') { setResult(obj.result) }
+            else if (obj.status === 'error') { setErro(obj.message ?? 'Erro') }
           } catch {}
         }
       }
@@ -64,7 +94,6 @@ export function ChatNL() {
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Enviar
             </button>
           </div>
-          {status && <div className="mt-3 text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="w-3 h-3 animate-spin" /> {status}</div>}
           {erro && <div className="mt-3 text-sm text-destructive flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> {erro}</div>}
         </div>
 
@@ -75,15 +104,32 @@ export function ChatNL() {
               <p className="text-sm leading-relaxed whitespace-pre-wrap">{result.resposta}</p>
               {result.error && <p className="text-sm text-destructive mt-2">{result.error}</p>}
             </div>
-            {result.sql && (
-              <div className="rounded-lg bg-card shadow-sm p-4">
-                <h4 className="text-xs font-semibold text-muted-foreground uppercase mb-2 flex items-center gap-2"><Database className="w-3 h-3" /> SQL gerado</h4>
-                <pre className="text-xs font-mono bg-muted p-3 rounded overflow-x-auto whitespace-pre-wrap">{result.sql}</pre>
-              </div>
-            )}
             {result.rows && result.rows.length > 0 && (
-              <div className="rounded-lg bg-card shadow-sm p-4">
-                <h4 className="text-xs font-semibold text-muted-foreground uppercase mb-2">Resultado ({result.total} linha{result.total === 1 ? '' : 's'})</h4>
+              <div className="rounded-lg bg-card shadow-sm p-4 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h4 className="text-xs font-semibold text-muted-foreground uppercase">Resultado ({result.total} linha{result.total === 1 ? '' : 's'})</h4>
+                  <button
+                    onClick={exportarGrafico}
+                    disabled={chartData.length === 0}
+                    className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-medium flex items-center gap-2 disabled:opacity-50 hover:bg-primary/90 transition"
+                  >
+                    <Download className="w-3 h-3" /> Exportar gráfico
+                  </button>
+                </div>
+
+                {chartData.length > 0 && (
+                  <div className="h-72" ref={chartContainerRef}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 50 }}>
+                        <XAxis dataKey="name" tickLine={false} tick={{ fontSize: 11 }} angle={-25} textAnchor="end" interval={0} height={70} />
+                        <YAxis tickLine={false} tick={{ fontSize: 11 }} allowDecimals={false} />
+                        <Tooltip wrapperStyle={{ fontSize: 11 }} />
+                        <Bar dataKey="value" name="Valor" fill="#B8651E" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+
                 <div className="overflow-x-auto max-h-96">
                   <table className="w-full text-sm">
                     <thead className="bg-muted sticky top-0">

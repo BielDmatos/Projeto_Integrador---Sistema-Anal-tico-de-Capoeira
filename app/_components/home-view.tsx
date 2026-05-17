@@ -8,14 +8,17 @@ import { ChatNL } from './chat-nl'
 export function HomeView() {
   const [tab, setTab] = useState<'dashboard' | 'chat'>('dashboard')
   const [stats, setStats] = useState<any>(null)
+  const [isLoadingStats, setIsLoadingStats] = useState(true)
   useEffect(() => {
-    fetch('/api/stats')
+    setIsLoadingStats(true)
+    fetch('/api/stats', { cache: 'no-store' })
       .then(async (response) => {
         const data = await response.json()
         if (!response.ok) throw new Error(data?.error ?? 'Erro ao carregar estatísticas')
         setStats(data)
       })
-      .catch(() => setStats({ error: true }))
+      .catch((error: any) => setStats({ error: true, errorMessage: error?.message ?? 'Erro ao carregar estatísticas' }))
+      .finally(() => setIsLoadingStats(false))
   }, [])
 
   return (
@@ -55,6 +58,9 @@ export function HomeView() {
           <p className="mt-3 text-muted-foreground max-w-2xl">
             Pergunte em português: “quantos alunos são bolsistas?”, “qual a idade média por bairro?”. O sistema gera SQL com segurança, consulta o banco e devolve resposta + tabela.
           </p>
+          {isLoadingStats && (
+            <div className="mt-6 text-sm text-muted-foreground">Carregando estatísticas...</div>
+          )}
           {stats && (
             <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
               <Stat icon={<Users className="w-4 h-4" />} label="Alunos" value={stats.total} />

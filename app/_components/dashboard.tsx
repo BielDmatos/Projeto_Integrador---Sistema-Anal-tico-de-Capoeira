@@ -6,7 +6,7 @@ const COLORS = ['#B8651E', '#E0A458', '#80604A', '#D97757', '#A0522D', '#6B4423'
 
 export function Dashboard({ stats }: { stats: any }) {
   if (!stats) return <div className="py-20 text-center text-muted-foreground">Carregando estatísticas...</div>
-  if (stats.error) return <div className="py-20 text-center text-destructive">Erro ao carregar as estatísticas.</div>
+  if (stats.error) return <div className="py-20 text-center text-destructive">Erro ao carregar as estatísticas: {stats.errorMessage ?? 'erro desconhecido'}</div>
 
   const porBairro = Array.isArray(stats.porBairro) ? stats.porBairro : []
   const faixaEtaria = Array.isArray(stats.faixaEtaria) ? stats.faixaEtaria : []

@@ -2,23 +2,45 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 
 export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+export const maxDuration = 60
+
+async function withTimeout<T>(promise: Promise<T>, ms = 15000): Promise<T> {
+  return await Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error('Timeout ao consultar banco. Verifique DATABASE_URL no Vercel e use a URL de Pooler do Supabase.')), ms)),
+  ])
+}
 
 export async function GET() {
   try {
-    const total = await prisma.aluno.count()
-    const ativos = await prisma.aluno.count({ where: { status: 'ativo' } })
-    const bolsistas = await prisma.aluno.count({ where: { bolsista: true } })
-    const agg = await prisma.aluno.aggregate({ _avg: { idade: true, rendaFamiliar: true } })
+    if (!process.env.DATABASE_URL) {
+      return NextResponse.json({ error: 'DATABASE_URL não configurada no ambiente de produção.' }, { status: 500 })
+    }
 
-    const porGenero = await prisma.aluno.groupBy({ by: ['genero'], _count: { _all: true } })
-    const porGraduacao = await prisma.aluno.groupBy({ by: ['graduacao'], _count: { _all: true } })
-    const porEscolaridade = await prisma.aluno.groupBy({ by: ['escolaridade'], _count: { _all: true } })
+    const [
+      total,
+      ativos,
+      bolsistas,
+      agg,
+      porGenero,
+      porGraduacao,
+      porEscolaridade,
+      bairros,
+      turmas,
+    ] = await withTimeout(Promise.all([
+      prisma.aluno.count(),
+      prisma.aluno.count({ where: { status: 'ativo' } }),
+      prisma.aluno.count({ where: { bolsista: true } }),
+      prisma.aluno.aggregate({ _avg: { idade: true, rendaFamiliar: true } }),
+      prisma.aluno.groupBy({ by: ['genero'], _count: { _all: true } }),
+      prisma.aluno.groupBy({ by: ['graduacao'], _count: { _all: true } }),
+      prisma.aluno.groupBy({ by: ['escolaridade'], _count: { _all: true } }),
+      prisma.bairro.findMany({ include: { _count: { select: { alunos: true } } } }),
+      prisma.turma.findMany({ include: { _count: { select: { alunos: true } } } }),
+    ]))
 
-    const bairros = await prisma.bairro.findMany({ include: { _count: { select: { alunos: true } } } })
-    const turmas = await prisma.turma.findMany({ include: { _count: { select: { alunos: true } } } })
-
-    // Faixas etárias
-    const alunos = await prisma.aluno.findMany({ select: { idade: true, rendaFamiliar: true } })
+    const alunos = await withTimeout(prisma.aluno.findMany({ select: { idade: true, rendaFamiliar: true } }))
     const faixas = [
       { faixa: '0-12', count: 0 }, { faixa: '13-17', count: 0 },
       { faixa: '18-25', count: 0 }, { faixa: '26-40', count: 0 },
@@ -58,7 +80,11 @@ export async function GET() {
       faixaRenda: rendas,
     })
   } catch (e: any) {
-    console.error(e)
-    return NextResponse.json({ error: e?.message ?? 'erro' }, { status: 500 })
+    console.error('GET /api/stats error:', e)
+    const message = String(e?.message ?? 'erro')
+    const hint = /timeout|connect|connection|socket|database|ssl|postgres|prisma/i.test(message)
+      ? ' Verifique no Vercel: DATABASE_URL usando Supabase Pooler (porta 6543) e SSL habilitado.'
+      : ''
+    return NextResponse.json({ error: `${message}${hint}` }, { status: 500 })
   }
 }
